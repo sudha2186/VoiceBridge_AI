@@ -1,0 +1,69 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+
+# IDE and editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Colab and Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+
+# Temporary experiments
+scratch/
+scratch_*
+*_scratch.*
+
+# Python environments and cache
+.venv/
+venv/
+__pycache__/
+
+TASK_PROGRESS.md
+task_progress.md
+MODEL_AUDIT.md
+SUPABASE_SCHEMA_AUDIT.md
+test_ocr_sample.png
+
+# Model checkpoints
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+# Private user data
+backend/data/citizen_documents.json
+backend/uploads/
+
+# Local development configuration
+.bolt/
+public/hero.jpeg
+
+# Private recordings
+recordings/
+processed_recordings/
