@@ -66,10 +66,37 @@ export function checkEligibility(
     };
   }
 
-  // --- 1. Dynamic Age Check (Derived from DOB) ---
+  // --- 1. Dynamic Age Check (Derived from DOB) & Senior/Child Guardrails ---
   const citizenAge = calculateAge(profile.date_of_birth) ?? profile.age;
+  const sNameLower = scheme.name.toLowerCase();
+  const isSeniorScheme = sNameLower.includes('senior citizen') || (rules.age_min != null && rules.age_min >= 60);
 
-  if (rules.age_min != null || rules.age_max != null) {
+  if (isSeniorScheme) {
+    if (citizenAge == null) {
+      missingCriteria++;
+      const msg = {
+        en: 'Date of birth not provided — senior citizen age criteria (60+ years) cannot be verified.',
+        hi: 'जन्म तिथि प्रदान नहीं की गई — वरिष्ठ नागरिक आयु मानदंड (60+ वर्ष) की पुष्टि नहीं हो सकी।',
+        mr: 'जन्मतारीख दिलेली नाही — ज्येष्ठ नागरिक वय निकष (६०+ वर्षे) पडताळता येत नाही.',
+      }[lang];
+      reasons.push(msg);
+    } else if (citizenAge < 60) {
+      failed++;
+      const msg = {
+        en: `Not eligible: applicant is ${citizenAge} years old. Senior citizen schemes strictly require 60+ years of age.`,
+        hi: `पात्र नहीं: आवेदक की आयु ${citizenAge} वर्ष है। वरिष्ठ नागरिक योजनाओं के लिए न्यूनतम 60 वर्ष अनिवार्य है।`,
+        mr: `पात्र नाही: अर्जदाराचे वय ${citizenAge} वर्षे आहे. ज्येष्ठ नागरिक योजनांसाठी किमान ६० वर्षे वय असणे बंधनकारक आहे.`,
+      }[lang];
+      reasons.push(msg);
+    } else {
+      const msg = {
+        en: `Senior citizen age verified: ${citizenAge} years meets scheme criteria.`,
+        hi: `वरिष्ठ नागरिक आयु सत्यापित: ${citizenAge} वर्ष योजना के मानदंडों के अनुरूप है।`,
+        mr: `ज्येष्ठ नागरिक वय पडताळले: ${citizenAge} वर्षे योजनेच्या निकषांची पूर्तता करते.`,
+      }[lang];
+      reasons.push(msg);
+    }
+  } else if (rules.age_min != null || rules.age_max != null) {
     if (citizenAge != null) {
       if (rules.age_min != null && citizenAge < rules.age_min) {
         failed++;
@@ -176,38 +203,83 @@ export function checkEligibility(
     }
   }
 
-  // --- 3. Annual Income Check ---
+  // --- 3. Annual Income & Parent/Guardian Income Check ---
   if (rules.income_max && rules.income_max > 0) {
-    if (profile.annual_income != null) {
-      if (profile.annual_income > rules.income_max) {
+    const isChild = citizenAge != null && citizenAge < 18;
+    const isStudent = normalizeOccupation(profile.occupation) === 'student';
+    const isChildOrStudentWithoutPersonalIncome =
+      isChild || (isStudent && (profile.has_personal_income === false || (profile.annual_income == null && profile.guardian_income != null)));
+
+    // Choose relevant income: guardian/family income for dependent students/children, personal income for earning citizens
+    const evaluatedIncome = isChildOrStudentWithoutPersonalIncome
+      ? (profile.guardian_income ?? profile.annual_income)
+      : profile.annual_income;
+
+    const isGuardianIncomeUsed = isChildOrStudentWithoutPersonalIncome && profile.guardian_income != null;
+
+    if (evaluatedIncome != null) {
+      if (evaluatedIncome > rules.income_max) {
         failed++;
         const msg = {
-          en: `Not eligible: annual income (₹${profile.annual_income.toLocaleString('en-IN')}) exceeds limit of ₹${rules.income_max.toLocaleString('en-IN')}.`,
-          hi: `पात्र नहीं: वार्षिक आय (₹${profile.annual_income.toLocaleString('en-IN')}) योजना सीमा ₹${rules.income_max.toLocaleString('en-IN')} से अधिक है।`,
-          mr: `पात्र नाही: वार्षिक उत्पन्न (₹${profile.annual_income.toLocaleString('en-IN')}) योजना मर्यादा ₹${rules.income_max.toLocaleString('en-IN')} पेक्षा जास्त आहे.`,
+          en: `Not eligible: ${isGuardianIncomeUsed ? 'family/guardian' : 'annual'} income (₹${evaluatedIncome.toLocaleString('en-IN')}) exceeds limit of ₹${rules.income_max.toLocaleString('en-IN')}.`,
+          hi: `पात्र नहीं: ${isGuardianIncomeUsed ? 'अभिभावक/परिवार की' : 'वार्षिक'} आय (₹${evaluatedIncome.toLocaleString('en-IN')}) योजना सीमा ₹${rules.income_max.toLocaleString('en-IN')} से अधिक है।`,
+          mr: `पात्र नाही: ${isGuardianIncomeUsed ? 'पालक/कुटुंबाचे' : 'वार्षिक'} उत्पन्न (₹${evaluatedIncome.toLocaleString('en-IN')}) योजना मर्यादा ₹${rules.income_max.toLocaleString('en-IN')} पेक्षा जास्त आहे.`,
         }[lang];
         reasons.push(msg);
       } else {
         const msg = {
-          en: `Income verified: ₹${profile.annual_income.toLocaleString('en-IN')} is within the ₹${rules.income_max.toLocaleString('en-IN')} limit.`,
-          hi: `आय सत्यापित: ₹${profile.annual_income.toLocaleString('en-IN')} आय सीमा ₹${rules.income_max.toLocaleString('en-IN')} के अंतर्गत है।`,
-          mr: `उत्पन्न पडताळले: ₹${profile.annual_income.toLocaleString('en-IN')} उत्पन्न मर्यादा ₹${rules.income_max.toLocaleString('en-IN')} च्या आत आहे.`,
+          en: `${isGuardianIncomeUsed ? 'Family/guardian' : 'Annual'} income verified: ₹${evaluatedIncome.toLocaleString('en-IN')} is within the ₹${rules.income_max.toLocaleString('en-IN')} limit.`,
+          hi: `${isGuardianIncomeUsed ? 'अभिभावक/परिवार की' : 'वार्षिक'} आय सत्यापित: ₹${evaluatedIncome.toLocaleString('en-IN')} आय सीमा ₹${rules.income_max.toLocaleString('en-IN')} के अंतर्गत है।`,
+          mr: `${isGuardianIncomeUsed ? 'पालक/कुटुंबाचे' : 'वार्षिक'} उत्पन्न पडताळले: ₹${evaluatedIncome.toLocaleString('en-IN')} उत्पन्न मर्यादा ₹${rules.income_max.toLocaleString('en-IN')} च्या आत आहे.`,
         }[lang];
         reasons.push(msg);
       }
     } else {
       missingCriteria++;
       const msg = {
-        en: 'Annual income not provided — cannot verify income eligibility.',
-        hi: 'वार्षिक आय प्रदान नहीं की गई — आय पात्रता की जाँच नहीं हो सकी।',
-        mr: 'वार्षिक उत्पन्न दिलेले नाही — उत्पन्न पात्रतेची पडताळणी करता येत नाही.',
+        en: isChildOrStudentWithoutPersonalIncome
+          ? 'Parent/guardian or family income not provided — cannot verify scheme income eligibility.'
+          : 'Annual income not provided — cannot verify income eligibility.',
+        hi: isChildOrStudentWithoutPersonalIncome
+          ? 'माता-पिता/अभिभावक या परिवार की आय प्रदान नहीं की गई — आय पात्रता की जाँच नहीं हो सकी।'
+          : 'वार्षिक आय प्रदान नहीं की गई — आय पात्रता की जाँच नहीं हो सकी।',
+        mr: isChildOrStudentWithoutPersonalIncome
+          ? 'पालक किंवा कुटुंबाचे उत्पन्न दिलेले नाही — उत्पन्न पात्रतेची पडताळणी करता येत नाही.'
+          : 'वार्षिक उत्पन्न दिलेले नाही — उत्पन्न पात्रतेची पडताळणी करता येत नाही.',
       }[lang];
       reasons.push(msg);
     }
   }
 
-  // --- 4. Occupation Check ---
-  if (rules.occupations && rules.occupations.length > 0 && !rules.occupations.includes('all')) {
+  // --- 4. Occupation Check & Student Guardrails ---
+  const isStudentScheme = sNameLower.includes('scholarship') || sNameLower.includes('student education');
+
+  if (isStudentScheme) {
+    if (!profile.occupation) {
+      missingCriteria++;
+      const msg = {
+        en: 'Occupation not provided — student status required for scholarship / student education scheme.',
+        hi: 'व्यवसाय प्रदान नहीं किया गया — छात्रवृत्ति/शिक्षा योजना के लिए विद्यार्थी होना आवश्यक है।',
+        mr: 'व्यवसाय दिलेला नाही — शिष्यवृत्ती/शिक्षण योजनेसाठी विद्यार्थी असणे आवश्यक आहे.',
+      }[lang];
+      reasons.push(msg);
+    } else if (normalizeOccupation(profile.occupation) !== 'student') {
+      failed++;
+      const msg = {
+        en: `Not eligible: scheme is designated exclusively for enrolled students (your occupation: ${profile.occupation}).`,
+        hi: `पात्र नहीं: यह योजना केवल नामांकित विद्यार्थियों के लिए है (आपका व्यवसाय: ${profile.occupation})।`,
+        mr: `पात्र नाही: ही योजना केवळ शिकणाऱ्या विद्यार्थ्यांसाठी आहे (आपला व्यवसाय: ${profile.occupation}).`,
+      }[lang];
+      reasons.push(msg);
+    } else {
+      const msg = {
+        en: 'Student status verified: eligible for education scholarship support.',
+        hi: 'विद्यार्थी स्थिति सत्यापित: शिक्षा छात्रवृत्ति सहायता के लिए पात्र।',
+        mr: 'विद्यार्थी स्थिती पडताळली: शैक्षणिक शिष्यवृत्तीसाठी पात्र.',
+      }[lang];
+      reasons.push(msg);
+    }
+  } else if (rules.occupations && rules.occupations.length > 0 && !rules.occupations.includes('all')) {
     if (profile.occupation) {
       const citizenOccNorm = normalizeOccupation(profile.occupation);
       const matched = rules.occupations.some(

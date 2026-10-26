@@ -2,9 +2,17 @@
 
 export interface OcrExtractedData {
   name?: string | null;
+  applicant_name?: string | null;
   dob?: string | null;
   address?: string | null;
-  income?: string | null;
+  income?: string | number | null;
+  financial_year?: string | null;
+  category?: string | null;
+  caste?: string | null;
+  issuing_authority?: string | null;
+  issue_date?: string | null;
+  valid_until?: string | null;
+  income_owner?: 'self' | 'guardian' | string | null;
   document_number?: string | null;
   page_count?: number;
   raw_text_snippet?: string;

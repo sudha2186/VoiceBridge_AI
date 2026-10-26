@@ -82,41 +82,41 @@ STATE_ABBREVIATIONS = {
 # All 36 Districts of Maharashtra + Major National Districts with Devanagari & Inflections
 CANONICAL_DISTRICTS = {
     # Maharashtra Districts (Comprehensive 36)
-    "ठाणे": "Thane", "ठाण्यात": "Thane", "thane": "Thane",
+    "ठाणे": "Thane", "ठाण्यात": "Thane", "thane": "Thane", "थाने": "Thane", "थाणे": "Thane", "ठाने": "Thane", "thana": "Thane",
     "पालघर": "Palghar", "palghar": "Palghar",
     "रायगड": "Raigad", "रायगढ": "Raigad", "raigad": "Raigad",
     "रत्नागिरी": "Ratnagiri", "ratnagiri": "Ratnagiri",
     "सिंधुदुर्ग": "Sindhudurg", "sindhudurg": "Sindhudurg",
-    "पुणे": "Pune", "पुण्यात": "Pune", "pune": "Pune",
+    "पुणे": "Pune", "पुण्यात": "Pune", "पुण्यामध्ये": "Pune", "पुने": "Pune", "pune": "Pune",
     "सातारा": "Satara", "satara": "Satara",
     "सांगली": "Sangli", "sangli": "Sangli",
-    "सोलापूर": "Solapur", "solapur": "Solapur",
-    "कोल्हापूर": "Kolhapur", "kolhapur": "Kolhapur",
-    "नाशिक": "Nashik", "नाशिकमध्ये": "Nashik", "nashik": "Nashik",
-    "धुळे": "Dhule", "धुले": "Dhule", "dhule": "Dhule",
-    "नंदुरबार": "Nandurbar", "nandurbar": "Nandurbar",
+    "सोलापूर": "Solapur", "सोलापुर": "Solapur", "solapur": "Solapur",
+    "कोल्हापूर": "Kolhapur", "कोल्हापुर": "Kolhapur", "kolhapur": "Kolhapur",
+    "नाशिक": "Nashik", "नाशिकमध्ये": "Nashik", "नासिक": "Nashik", "nashik": "Nashik",
+    "धुळे": "Dhule", "धुले": "Dhule", "धुलिया": "Dhule", "dhule": "Dhule",
+    "नंदुरबार": "Nandurbar", "नन्दुरबार": "Nandurbar", "nandurbar": "Nandurbar",
     "जळगाव": "Jalgaon", "जलगांव": "Jalgaon", "jalgaon": "Jalgaon",
     "अहमदनगर": "Ahmednagar", "ahmednagar": "Ahmednagar", "अहिल्यानगर": "Ahmednagar",
-    "छत्रपती संभाजीनगर": "Chhatrapati Sambhajinagar", "औरंगाबाद": "Chhatrapati Sambhajinagar",
+    "छत्रपती संभाजीनगर": "Chhatrapati Sambhajinagar", "औरंगाबाद": "Chhatrapati Sambhajinagar", "संभाजीनगर": "Chhatrapati Sambhajinagar",
     "aurangabad": "Chhatrapati Sambhajinagar", "chhatrapati sambhajinagar": "Chhatrapati Sambhajinagar",
     "जालना": "Jalna", "jalna": "Jalna",
-    "परभणी": "Parbhani", "parbhani": "Parbhani",
+    "परभणी": "Parbhani", "परभनी": "Parbhani", "parbhani": "Parbhani",
     "हिंगोली": "Hingoli", "hingoli": "Hingoli",
-    "नांदेड": "Nanded", "nanded": "Nanded",
+    "नांदेड": "Nanded", "नांदेड़": "Nanded", "nanded": "Nanded",
     "बीड": "Beed", "beed": "Beed",
-    "लातूर": "Latur", "latur": "Latur",
+    "लातूर": "Latur", "लातुर": "Latur", "latur": "Latur",
     "धाराशिव": "Dharashiv", "उस्मानाबाद": "Dharashiv", "osmanabad": "Dharashiv", "dharashiv": "Dharashiv",
     "बुलढाणा": "Buldhana", "बुलडाणा": "Buldhana", "buldhana": "Buldhana",
     "अकोला": "Akola", "akola": "Akola",
     "वाशीम": "Washim", "वाशिम": "Washim", "washim": "Washim",
-    "अमरावती": "Amravati", "amravati": "Amravati",
+    "अमरावती": "Amravati", "अमरावतीमध्ये": "Amravati", "amravati": "Amravati",
     "यवतमाळ": "Yavatmal", "यवतमाल": "Yavatmal", "yavatmal": "Yavatmal",
     "वर्धा": "Wardha", "wardha": "Wardha",
     "नागपूर": "Nagpur", "नागपुर": "Nagpur", "nagpur": "Nagpur",
     "भंडारा": "Bhandara", "bhandara": "Bhandara",
-    "गोंदिया": "Gondia", "gondia": "Gondia",
-    "चंद्रपूर": "Chandrapur", "chandrapur": "Chandrapur",
-    "गडचिरोली": "Gadchiroli", "gadchiroli": "Gadchiroli",
+    "गोंदिया": "Gondia", "गोन्दिया": "Gondia", "gondia": "Gondia",
+    "चंद्रपूर": "Chandrapur", "चंद्रपुर": "Chandrapur", "chandrapur": "Chandrapur",
+    "गडचिरोली": "Gadchiroli", "गड़चिरोली": "Gadchiroli", "gadchiroli": "Gadchiroli",
     "मुंबई": "Mumbai", "mumbai": "Mumbai", "बॉम्बे": "Mumbai", "bombay": "Mumbai",
     "मुंबई उपनगर": "Mumbai Suburban", "mumbai suburban": "Mumbai Suburban",
 
@@ -204,18 +204,32 @@ def extract_state_and_district(
 
     text_lower = text.lower()
 
-    # 1. Check explicit district mentions in text first
-    # e.g., "Thane district", "in Thane", "ठाणे जिले", "ठाणे जिल्ह्यात", "ठाणे जिल्हा"
-    district_pattern = re.search(
-        r"([A-Za-z\u0900-\u097F]+)\s*(?:district|जिला|जिले|जिल्हा|जिल्ह्यात|मध्ये)\b",
+    # 1A. Check explicit district mentions: Keyword BEFORE District Name
+    # e.g., "My district is Thane", "जिला ठाणे", "मेरा जिला ठाणे है", "माझा जिल्हा ठाणे आहे"
+    kw_first_pattern = re.search(
+        r"(?:district(?:\s+is)?|district\s*name\s*is|जिला(?:\s*[:\-]?|\s+है)?|जिले(?:\s*[:\-]?|\s+का\s*नाम)?|जिल्हा(?:\s*[:\-]?|\s+आहे)?|जिल्ह्याचे\s*नाव)\s*[:\-\u2013]?\s*([A-Za-z\u0900-\u097F]+)",
         text,
         re.IGNORECASE
     )
-    if district_pattern:
-        cand = district_pattern.group(1).strip().lower()
+    if kw_first_pattern:
+        cand = kw_first_pattern.group(1).strip().lower()
         if cand in CANONICAL_DISTRICTS:
             district = CANONICAL_DISTRICTS[cand]
-            sources["district"] = "rule_district_pattern"
+            sources["district"] = "rule_district_pattern_kw_first"
+
+    # 1B. Check explicit district mentions: District Name BEFORE Keyword
+    # e.g., "Thane district", "in Thane", "ठाणे जिले", "ठाणे जिल्ह्यात", "ठाणे जिल्हा"
+    if not district:
+        district_pattern = re.search(
+            r"([A-Za-z\u0900-\u097F]+)\s*(?:district|जिला|जिले|जिल्हा|जिल्ह्यात|मध्ये)\b",
+            text,
+            re.IGNORECASE
+        )
+        if district_pattern:
+            cand = district_pattern.group(1).strip().lower()
+            if cand in CANONICAL_DISTRICTS:
+                district = CANONICAL_DISTRICTS[cand]
+                sources["district"] = "rule_district_pattern_kw_after"
 
     # 2. Check from NER model outputs
     ner_dist = ner_entities.get("DISTRICT")
@@ -226,12 +240,13 @@ def extract_state_and_district(
                 sources["district"] = "model_crf" if lang == "en" else "model_ner_loc"
                 break
 
-    # 3. Direct dictionary match for district
+    # 3. Direct dictionary match for district (sorted by length descending for longest phrase matching)
     if not district:
-        for k, v in CANONICAL_DISTRICTS.items():
-            # Use word boundaries for English / clean lookup for Devanagari
-            if re.search(rf"(?:\b|^){re.escape(k.lower())}(?:\b|$|\s)", text_lower):
-                district = v
+        sorted_keys = sorted(CANONICAL_DISTRICTS.keys(), key=len, reverse=True)
+        for k in sorted_keys:
+            k_lower = k.lower()
+            if re.search(rf"(?:^|[^\w\u0900-\u097F]){re.escape(k_lower)}(?:$|[^\w\u0900-\u097F])", text_lower):
+                district = CANONICAL_DISTRICTS[k]
                 sources["district"] = "rule_pattern"
                 break
 

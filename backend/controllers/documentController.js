@@ -148,6 +148,11 @@ export async function uploadDocument(req, res) {
         birth_year: null,
         dob_type: null,
         document_number: null,
+        income: null,
+        category: null,
+        caste: null,
+        financial_year: null,
+        issuing_authority: null,
         raw_text_snippet: '',
       };
       verification = {

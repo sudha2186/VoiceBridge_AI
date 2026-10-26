@@ -60,6 +60,9 @@ export default function ProfilePage() {
   const [district, setDistrict] = useState('');
   const [occupation, setOccupation] = useState('');
   const [annualIncome, setAnnualIncome] = useState('');
+  const [hasPersonalIncome, setHasPersonalIncome] = useState<boolean | null>(null);
+  const [guardianIncome, setGuardianIncome] = useState('');
+  const [incomeSource, setIncomeSource] = useState<'father' | 'mother' | 'legal_guardian' | 'family' | 'personal'>('personal');
   const [category, setCategory] = useState('');
   const [disabilityStatus, setDisabilityStatus] = useState<'Yes' | 'No' | 'Prefer not to say' | ''>('');
 
@@ -93,6 +96,13 @@ export default function ProfilePage() {
       setDistrict(profile.district || '');
       setOccupation(profile.occupation || '');
       setAnnualIncome(profile.annual_income != null ? profile.annual_income.toString() : '');
+      setHasPersonalIncome(profile.has_personal_income ?? null);
+      setGuardianIncome(profile.guardian_income != null ? profile.guardian_income.toString() : '');
+      if (profile.income_source) {
+        setIncomeSource(profile.income_source as any);
+      } else if (profile.has_personal_income === false) {
+        setIncomeSource('family');
+      }
       setCategory(profile.category || '');
       setDisabilityStatus(
         profile.disability_status ? (profile.disability_status as 'Yes' | 'No' | 'Prefer not to say') : ''
@@ -112,12 +122,33 @@ export default function ProfilePage() {
     return calculateAge(dob);
   }, [dob]);
 
+  // Detect student or minor status
+  const isChild = useMemo(() => {
+    return calculatedAge != null && calculatedAge < 18;
+  }, [calculatedAge]);
+
+  const isStudent = useMemo(() => {
+    return occupation.toLowerCase().trim() === 'student';
+  }, [occupation]);
+
+  const isChildOrStudent = useMemo(() => {
+    return isChild || isStudent;
+  }, [isChild, isStudent]);
+
+  // Effective income string for completeness evaluation
+  const effectiveIncome = useMemo(() => {
+    if (isChildOrStudent && hasPersonalIncome === false) {
+      return guardianIncome;
+    }
+    return annualIncome;
+  }, [isChildOrStudent, hasPersonalIncome, guardianIncome, annualIncome]);
+
   // Completion calculation across all 9 fields
   const completionPct = useMemo(() => {
-    const fields = [fullName, dob, gender, state, district, occupation, annualIncome, category, disabilityStatus];
+    const fields = [fullName, dob, gender, state, district, occupation, effectiveIncome, category, disabilityStatus];
     const filled = fields.filter((f) => f && f.toString().trim().length > 0).length;
     return Math.round((filled / 9) * 100);
-  }, [fullName, dob, gender, state, district, occupation, annualIncome, category, disabilityStatus]);
+  }, [fullName, dob, gender, state, district, occupation, effectiveIncome, category, disabilityStatus]);
 
   // ==========================================================
   // Web Speech synthesis helper (read out in native language)
@@ -356,13 +387,27 @@ export default function ProfilePage() {
     }
 
     let parsedIncome: number | null = null;
-    if (annualIncome.trim()) {
-      const num = parseFloat(annualIncome.replace(/[₹,\s]/g, ''));
-      if (isNaN(num) || num < 0) {
-        setError('Please enter a valid annual income.');
-        return;
+    let parsedGuardianIncome: number | null = null;
+
+    if (isChildOrStudent && hasPersonalIncome === false) {
+      if (guardianIncome.trim()) {
+        const gNum = parseFloat(guardianIncome.replace(/[₹,\s]/g, ''));
+        if (isNaN(gNum) || gNum < 0) {
+          setError('Please enter a valid parent/guardian annual income.');
+          return;
+        }
+        parsedGuardianIncome = gNum;
       }
-      parsedIncome = num;
+      parsedIncome = 0; // Citizen has no personal income
+    } else {
+      if (annualIncome.trim()) {
+        const num = parseFloat(annualIncome.replace(/[₹,\s]/g, ''));
+        if (isNaN(num) || num < 0) {
+          setError('Please enter a valid annual income.');
+          return;
+        }
+        parsedIncome = num;
+      }
     }
 
     setSaving(true);
@@ -376,6 +421,9 @@ export default function ProfilePage() {
         district: district.trim() || null,
         occupation: occupation.trim() || null,
         annual_income: parsedIncome,
+        has_personal_income: isChildOrStudent ? hasPersonalIncome : true,
+        guardian_income: parsedGuardianIncome,
+        income_source: isChildOrStudent && hasPersonalIncome === false ? incomeSource : 'personal',
         category: category.trim() || null,
         disability_status: disabilityStatus || null,
         age: calculatedAge, // Synchronize calculated age dynamically
@@ -391,7 +439,7 @@ export default function ProfilePage() {
         state,
         district,
         occupation,
-        annualIncome,
+        effectiveIncome,
         category,
         disabilityStatus,
       ].every((val) => val && val.toString().trim().length > 0);
@@ -821,23 +869,156 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 7. Annual Income */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              {t('profile.fieldAnnualIncome')}
-            </label>
-            <div className="relative mt-1.5">
-              <IndianRupee size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="number"
-                value={annualIncome}
-                onChange={(e) => setAnnualIncome(e.target.value)}
-                placeholder={t('profile.fieldAnnualIncomePlaceholder')}
-                min="0"
-                step="1000"
-                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-            </div>
+          {/* 7. Annual Income & Dependent Guardian Income Handling */}
+          <div className={isChildOrStudent ? 'sm:col-span-2 rounded-2xl border border-primary-200 bg-primary-50/40 p-4 dark:border-primary-900/40 dark:bg-primary-950/20' : ''}>
+            {isChildOrStudent ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    {t('profile.hasPersonalIncomeQuestion')}
+                  </label>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    {language === 'mr'
+                      ? 'विद्यार्थी किंवा १८ वर्षांखालील नागरिकांसाठी उत्पन्नाची स्पष्टता'
+                      : language === 'hi'
+                      ? 'विद्यार्थी या 18 वर्ष से कम आयु के नागरिकों के लिए आय स्पष्टीकरण'
+                      : 'Income clarification for students and applicants under 18'}
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <label
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3 text-xs sm:text-sm font-medium transition-all ${
+                        hasPersonalIncome === false
+                          ? 'border-primary-500 bg-white text-primary-800 shadow-sm dark:border-primary-400 dark:bg-slate-800 dark:text-primary-200'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="has_personal_income"
+                        checked={hasPersonalIncome === false}
+                        onChange={() => setHasPersonalIncome(false)}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>
+                        {language === 'mr'
+                          ? 'नाही (मी अवलंबून विद्यार्थी/अज्ञान आहे)'
+                          : language === 'hi'
+                          ? 'नहीं (मैं आश्रित छात्र/अवयस्क हूँ)'
+                          : 'No (I am a dependent student/minor)'}
+                      </span>
+                    </label>
+
+                    <label
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3 text-xs sm:text-sm font-medium transition-all ${
+                        hasPersonalIncome === true
+                          ? 'border-primary-500 bg-white text-primary-800 shadow-sm dark:border-primary-400 dark:bg-slate-800 dark:text-primary-200'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="has_personal_income"
+                        checked={hasPersonalIncome === true}
+                        onChange={() => setHasPersonalIncome(true)}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>
+                        {language === 'mr'
+                          ? 'होय (माझे स्वतःचे उत्पन्न आहे)'
+                          : language === 'hi'
+                          ? 'हाँ (मेरी व्यक्तिगत आय है)'
+                          : 'Yes (I earn personal income)'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {hasPersonalIncome === false && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                    <p className="font-medium leading-relaxed">
+                      {t('profile.studentChildIncomeNotice')}
+                    </p>
+                  </div>
+                )}
+
+                {hasPersonalIncome === false ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        {t('profile.incomeSourceLabel')}
+                      </label>
+                      <div className="relative mt-1.5">
+                        <Tag size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <select
+                          value={incomeSource}
+                          onChange={(e) => setIncomeSource(e.target.value as any)}
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        >
+                          <option value="father">{t('profile.incomeSourceFather')}</option>
+                          <option value="mother">{t('profile.incomeSourceMother')}</option>
+                          <option value="legal_guardian">{t('profile.incomeSourceGuardian')}</option>
+                          <option value="family">{t('profile.incomeSourceFamily')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        {t('profile.fieldGuardianAnnualIncome')}
+                      </label>
+                      <div className="relative mt-1.5">
+                        <IndianRupee size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          value={guardianIncome}
+                          onChange={(e) => setGuardianIncome(e.target.value)}
+                          placeholder="e.g. 150000"
+                          min="0"
+                          step="1000"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      {t('profile.fieldAnnualIncome')}
+                    </label>
+                    <div className="relative mt-1.5">
+                      <IndianRupee size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="number"
+                        value={annualIncome}
+                        onChange={(e) => setAnnualIncome(e.target.value)}
+                        placeholder={t('profile.fieldAnnualIncomePlaceholder')}
+                        min="0"
+                        step="1000"
+                        className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  {t('profile.fieldAnnualIncome')}
+                </label>
+                <div className="relative mt-1.5">
+                  <IndianRupee size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="number"
+                    value={annualIncome}
+                    onChange={(e) => setAnnualIncome(e.target.value)}
+                    placeholder={t('profile.fieldAnnualIncomePlaceholder')}
+                    min="0"
+                    step="1000"
+                    className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 8. Caste / Category */}

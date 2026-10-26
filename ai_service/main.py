@@ -923,19 +923,235 @@ def run_winrt_ocr_on_image(image_path: str) -> str:
         print(f"[AI Service OCR] WinRT OCR execution error: {e}", flush=True)
     return ""
 
+DEVANAGARI_DIGITS = {
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+}
+
+def devanagari_to_ascii_digits(text: str) -> str:
+    """Converts Devanagari numerals (०-९) to ASCII digits (0-9)."""
+    if not text:
+        return ""
+    return "".join(DEVANAGARI_DIGITS.get(ch, ch) for ch in text)
+
 def clean_extracted_name(name_str: str) -> Optional[str]:
-    """Cleans raw name candidate extracted from document."""
+    """Cleans raw name candidate extracted from document while preserving Devanagari Unicode."""
     if not name_str:
         return None
-    # Strip honorifics, colons, unwanted labels
-    cand = re.sub(r"^(?:Name|नाव|नाम|Shri|Smt|Mr|Ms|Mrs|Dr)\s*[:\-\u2013.]?\s*", "", name_str.strip(), flags=re.IGNORECASE)
-    cand = re.sub(r"(?:DOB|Date of Birth|Gender|Male|Female|S/O|D/O|W/O|C/O|Address|Aadhaar).*", "", cand, flags=re.IGNORECASE)
+    cand = re.sub(
+        r"^(?:Name|नाव|नाम|Shri|Smt|Mr|Ms|Mrs|Dr|श्री|श्रीमती|कुमार|कुमारी|रा\.)\s*[:\-\u2013.]?\s*",
+        "",
+        name_str.strip(),
+        flags=re.IGNORECASE
+    )
+    cand = re.sub(
+        r"(?:DOB|Date of Birth|Gender|Male|Female|S/O|D/O|W/O|C/O|Address|Aadhaar|आत्मज|पुत्र|मुलगा|मुलगी).*",
+        "",
+        cand,
+        flags=re.IGNORECASE
+    )
     cand = re.sub(r"[^\w\s\u0900-\u097F]", " ", cand).strip()
     cand = re.sub(r"\s+", " ", cand).strip()
-    # Check minimum length and that it doesn't contain institution/government words
-    if len(cand) >= 3 and not re.search(r"(?:Government|India|सरकार|भारत|UIDAI|Authority|Commission)", cand, re.IGNORECASE):
-        return cand.title()
+    if len(cand) >= 3 and not re.search(
+        r"(?:Government|India|सरकार|भारत|UIDAI|Authority|Commission|महाराष्ट्र|तहसील|कार्यालय)",
+        cand,
+        re.IGNORECASE
+    ):
+        if re.search(r"[A-Za-z]", cand):
+            return cand.title()
+        return cand
     return None
+
+def parse_income_certificate(raw_text: str) -> dict:
+    """
+    Extracts structured fields from English, Hindi, and Marathi Income Certificates.
+    Handles Aaple Sarkar / Tahsildar / e-District formats with Devanagari numerals.
+    """
+    normalized_text = devanagari_to_ascii_digits(raw_text)
+    data = {
+        "document_type": "Income Certificate",
+        "applicant_name": None,
+        "income_amount": None,
+        "financial_year": None,
+        "issuing_authority": None,
+        "certificate_number": None,
+        "issue_date": None,
+        "valid_until": None,
+        "income_owner": "self"
+    }
+
+    # 1. Certificate Number / जावक क्रमांक / बारकोड
+    cert_no_m = re.search(
+        r"(?:प्रमाणपत्र\s*क्रमांक|जावक\s*क्रमांक|जावक\s*क्र\.?|अर्ज\s*क्रमांक|बारकोड|टोकन\s*क्र\.?|Certificate\s*No\.?|Application\s*No\.?|Cert\s*No\.?)\s*[:\-\u2013.]?\s*([A-Za-z0-9\-_/]{5,30})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if cert_no_m:
+        data["certificate_number"] = cert_no_m.group(1).strip()
+    else:
+        token_m = re.search(r"\b(\d{16,22})\b", normalized_text)
+        if token_m:
+            data["certificate_number"] = token_m.group(1).strip()
+
+    # 2. Applicant Name
+    name_m = re.search(
+        r"(?:अर्जदाराचे\s*नाव|आवेदक\s*का\s*नाम|Applicant\s*Name|Name\s*of\s*Applicant)\s*[:\-\u2013.]?\s*([A-Za-z\u0900-\u097F\s]{3,45})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if name_m:
+        data["applicant_name"] = clean_extracted_name(name_m.group(1))
+    else:
+        certify_m = re.search(
+            r"(?:प्रमाणित\s*करण्यात\s*येते\s*की\s*,?\s*(?:श्री|श्रीमती|कुमार|कुमारी)?\s*|प्रमाणित\s*किया\s*जाता\s*है\s*कि\s*(?:श्री|श्रीमती|कुमारी)?\s*|This\s*is\s*to\s*certify\s*that\s*(?:Shri|Smt|Kumari)?\s*)([A-Za-z\u0900-\u097F\s]{3,40}?)(?:,?\s*रा\.|\s+रा\.|\s+राहणार|,?\s*निवासी|\s+आत्मज|\s+पुत्र|\s+S/o|\s+D/o|\s+W/o|\s+यांचे|\s+इनकी|,?\s*resident|\s+is\s+a\s+resident)",
+            normalized_text,
+            re.IGNORECASE
+        )
+        if certify_m:
+            data["applicant_name"] = clean_extracted_name(certify_m.group(1))
+
+    # 3. Income Amount
+    inc_m = re.search(
+        r"(?:एकूण\s*वार्षिक\s*उत्पन्न|वार्षिक\s*उत्पन्न|सर्व\s*मार्गांनी\s*मिळणारे\s*उत्पन्न|वार्षिक\s*आय|कुल\s*वार्षिक\s*आय|Annual\s*Income|Total\s*Income|total\s*annual\s*income)\s*(?:of)?\s*(?:रु\.?|₹|INR|Rs\.?)?\s*[:\-\u2013.]?\s*(?:रु\.?|₹|Rs\.?)?\s*([\d,]+)",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if inc_m:
+        raw_val = inc_m.group(1).replace(",", "").strip()
+        if raw_val.isdigit():
+            data["income_amount"] = int(raw_val)
+    else:
+        any_inc = re.search(r"(?:रु\.?|₹|Rs\.?)\s*([\d,]{4,10})\s*/?\-?", normalized_text)
+        if any_inc:
+            raw_val = any_inc.group(1).replace(",", "").strip()
+            if raw_val.isdigit():
+                data["income_amount"] = int(raw_val)
+
+    # 4. Financial Year / Validity Period
+    fy_m = re.search(
+        r"(?:आर्थिक\s*वर्ष|वित्तीय\s*वर्ष|चालू\s*आर्थिक\s*वर्ष|Financial\s*Year|FY)\s*[:\-\u2013.]?\s*(\d{4}\s*[-–/]\s*\d{2,4})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if fy_m:
+        data["financial_year"] = fy_m.group(1).replace(" ", "")
+
+    # 5. Issuing Authority
+    auth_m = re.search(
+        r"(तहसीलदार|नायब\s*तहसीलदार|उपविभागीय\s*अधिकारी|सक्षम\s*प्राधिकारी|तालुका\s*दंडाधिकारी|Tahsildar|Tehsildar|Sub[\s\-]Divisional\s*Officer|Executive\s*Magistrate|District\s*Magistrate|Revenue\s*Officer)",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if auth_m:
+        data["issuing_authority"] = auth_m.group(1).strip()
+
+    # 6. Issue Date
+    date_m = re.search(
+        r"(?:दिनांक|तारीख|Date\s*of\s*Issue|Date)\s*[:\-\u2013.]?\s*(\d{2}[/\-.]\d{2}[/\-.]\d{4})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if date_m:
+        parts = date_m.group(1).replace(".", "-").replace("/", "-").split("-")
+        if len(parts) == 3:
+            data["issue_date"] = f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+
+    # 7. Whose Income
+    if re.search(r"(?:पालक|वडील|आई|कुटुंब|पिता|माता|Guardian|Parent|Father|Mother|Family)", normalized_text, re.IGNORECASE):
+        if not re.search(r"(?:स्वतःचे|खुद\s*का|Own|Self)", normalized_text, re.IGNORECASE):
+            data["income_owner"] = "guardian"
+
+    return data
+
+def parse_caste_certificate(raw_text: str) -> dict:
+    """
+    Extracts structured fields from English, Hindi, and Marathi Caste Certificates.
+    """
+    normalized_text = devanagari_to_ascii_digits(raw_text)
+    data = {
+        "document_type": "Caste Certificate",
+        "applicant_name": None,
+        "category": None,
+        "caste": None,
+        "certificate_number": None,
+        "issuing_authority": None,
+        "issue_date": None
+    }
+
+    # 1. Certificate Number
+    cert_no_m = re.search(
+        r"(?:प्रमाणपत्र\s*क्रमांक|अनुक्रमांक|जावक\s*क्रमांक|जावक\s*क्र\.?|बारकोड|Certificate\s*No\.?|Application\s*No\.?)\s*[:\-\u2013.]?\s*([A-Za-z0-9\-_/]{5,30})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if cert_no_m:
+        data["certificate_number"] = cert_no_m.group(1).strip()
+    else:
+        token_m = re.search(r"\b(\d{16,22})\b", normalized_text)
+        if token_m:
+            data["certificate_number"] = token_m.group(1).strip()
+
+    # 2. Applicant Name
+    name_m = re.search(
+        r"(?:अर्जदाराचे\s*नाव|आवेदक\s*का\s*नाम|Applicant\s*Name)\s*[:\-\u2013.]?\s*([A-Za-z\u0900-\u097F\s]{3,45})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if name_m:
+        data["applicant_name"] = clean_extracted_name(name_m.group(1))
+    else:
+        certify_m = re.search(
+            r"(?:प्रमाणित\s*करण्यात\s*येते\s*की\s*,?\s*(?:श्री|श्रीमती|कुमार|कुमारी)?\s*|प्रमाणित\s*किया\s*जाता\s*है\s*कि\s*(?:श्री|श्रीमती|कुमारी)?\s*|This\s*is\s*to\s*certify\s*that\s*(?:Shri|Smt|Kumari)?\s*)([A-Za-z\u0900-\u097F\s]{3,40}?)(?:,?\s*रा\.|\s+रा\.|\s+राहणार|,?\s*निवासी|\s+आत्मज|\s+पुत्र|\s+S/o|\s+D/o|\s+W/o|\s+हे|\s+या|\s+belonging)",
+            normalized_text,
+            re.IGNORECASE
+        )
+        if certify_m:
+            data["applicant_name"] = clean_extracted_name(certify_m.group(1))
+
+    # 3. Category / Caste
+    if re.search(r"(?:इतर\s*मागास\s*वर्ग|अन्य\s*पिछड़ा\s*वर्ग|Other\s*Backward\s*Class|OBC)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "OBC"
+    elif re.search(r"(?:अनुसूचित\s*जाती|अनुसूचित\s*जाति|Scheduled\s*Caste|SC)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "SC"
+    elif re.search(r"(?:अनुसूचित\s*जमाती|अनुसूचित\s*जनजाति|Scheduled\s*Tribe|ST)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "ST"
+    elif re.search(r"(?:विमुक्त\s*जाती|भटक्या\s*जमाती|VJNT|NT)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "OBC"
+    elif re.search(r"(?:आर्थिकदृष्ट्या\s*दुर्बल|EWS)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "EWS"
+    elif re.search(r"(?:सामान्य|खुला|General)\b", normalized_text, re.IGNORECASE):
+        data["category"] = "General"
+
+    # Specific caste name e.g. "कुणबी", "मराठा", etc. (avoid matching "जातीचे प्रमाणपत्र")
+    caste_m = re.search(
+        r"(?:प्रवर्गातील|जातीचे\s*असून\s*ती\s*जात|जात\s*:|जाति\s*:|Caste\s*:)\s*([A-Za-z\u0900-\u097F]{3,20})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if caste_m:
+        data["caste"] = caste_m.group(1).strip()
+
+    # 4. Issuing Authority
+    auth_m = re.search(
+        r"(उपविभागीय\s*अधिकारी|सक्षम\s*प्राधिकारी|तहसीलदार|Sub[\s\-]Divisional\s*Officer|Executive\s*Magistrate|District\s*Magistrate)",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if auth_m:
+        data["issuing_authority"] = auth_m.group(1).strip()
+
+    # 5. Issue Date
+    date_m = re.search(
+        r"(?:दिनांक|तारीख|Date\s*of\s*Issue|Date)\s*[:\-\u2013.]?\s*(\d{2}[/\-.]\d{2}[/\-.]\d{4})",
+        normalized_text,
+        re.IGNORECASE
+    )
+    if date_m:
+        parts = date_m.group(1).replace(".", "-").replace("/", "-").split("-")
+        if len(parts) == 3:
+            data["issue_date"] = f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+
+    return data
 
 def standardize_document_date(raw_date: str) -> Optional[str]:
     """Standardizes document date format to YYYY-MM-DD."""
@@ -1049,24 +1265,57 @@ async def extract_and_verify_pdf(
 
         doc_type_lower = document_type.lower()
         is_aadhaar = "aadhaar" in doc_type_lower or "आधार" in raw_text or "aadhaar" in raw_text.lower() or "uidai" in raw_text.lower()
+        is_income = "income" in doc_type_lower or "उत्पन्न" in raw_text or "उत्पन्नाचा दाखला" in raw_text or "आय प्रमाण" in raw_text or "income certificate" in raw_text.lower()
+        is_caste = "caste" in doc_type_lower or "जात" in raw_text or "जातीचे" in raw_text or "जाति" in raw_text or "caste certificate" in raw_text.lower()
 
         # ==========================================
-        # 1. Aadhaar-Specific vs Generic Extraction
+        # 1. Specialized Extraction by Document Type
         # ==========================================
-        if is_aadhaar:
-            # 1A. Aadhaar Number (12 digits, often formatted as 'XXXX XXXX 1234' or '1234 5678 9012')
+        if is_income:
+            # 1A. Specialized Income Certificate Extractor (English, Hindi, Marathi)
+            inc_info = parse_income_certificate(raw_text)
+            extracted["name"] = inc_info["applicant_name"]
+            extracted["income"] = inc_info["income_amount"]
+            extracted["financial_year"] = inc_info["financial_year"]
+            extracted["issuing_authority"] = inc_info["issuing_authority"]
+            extracted["document_number"] = inc_info["certificate_number"]
+            extracted["issue_date"] = inc_info["issue_date"]
+            extracted["income_owner"] = inc_info["income_owner"]
+            extracted["document_type"] = "Income Certificate"
+
+            # Fallback to general date if issue_date not matched
+            if not extracted["dob"]:
+                extracted["dob"] = inc_info["issue_date"]
+                extracted["dob_type"] = "full" if inc_info["issue_date"] else None
+
+        elif is_caste:
+            # 1B. Specialized Caste Certificate Extractor (English, Hindi, Marathi)
+            caste_info = parse_caste_certificate(raw_text)
+            extracted["name"] = caste_info["applicant_name"]
+            extracted["category"] = caste_info["category"]
+            extracted["caste"] = caste_info["caste"]
+            extracted["document_number"] = caste_info["certificate_number"]
+            extracted["issuing_authority"] = caste_info["issuing_authority"]
+            extracted["issue_date"] = caste_info["issue_date"]
+            extracted["document_type"] = "Caste Certificate"
+
+            if not extracted["dob"]:
+                extracted["dob"] = caste_info["issue_date"]
+                extracted["dob_type"] = "full" if caste_info["issue_date"] else None
+
+        elif is_aadhaar:
+            # 1C. Aadhaar Number (12 digits, often formatted as 'XXXX XXXX 1234' or '1234 5678 9012')
             a_match = re.search(r"\b([X\d]{4}\s[X\d]{4}\s\d{4})\b|\b(\d{12})\b", raw_text)
             if a_match:
                 extracted["document_number"] = a_match.group(0).strip()
 
-            # 1B. Name Extraction (Explicit label or line before DOB)
+            # Name Extraction (Explicit label or line before DOB)
             name_match = re.search(r"(?:Name|नाव|नाम)\s*[:\-\u2013]?\s*([A-Za-z\u0900-\u097F\s]{3,40})", raw_text, re.IGNORECASE)
             if name_match:
                 cand = clean_extracted_name(name_match.group(1))
                 if cand:
                     extracted["name"] = cand
             else:
-                # Line immediately preceding DOB / Year of Birth
                 lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
                 for idx, ln in enumerate(lines):
                     if re.search(r"(?:DOB|Date\s+of\s+Birth|Year\s+of\s+Birth|जन्म)", ln, re.IGNORECASE) and idx > 0:
@@ -1075,7 +1324,7 @@ async def extract_and_verify_pdf(
                             extracted["name"] = cand
                             break
 
-            # 1C. Date of Birth or Year of Birth
+            # Date of Birth or Year of Birth
             full_dob_m = re.search(
                 r"(?:DOB|Date\s+of\s+Birth|जन्मतारीख|जन्म\s*तिथि)\s*[:\-\u2013]?\s*(\d{2}[/\-. ]\d{2}[/\-. ]\d{4}|\d{4}[/\-. ]\d{2}[/\-. ]\d{2})",
                 raw_text,
@@ -1097,7 +1346,6 @@ async def extract_and_verify_pdf(
                 extracted["dob"] = f"{year_only_m.group(1)}-01-01"
                 extracted["dob_type"] = "year_only"
             else:
-                # Fallback: scan for any complete DD/MM/YYYY pattern
                 any_date = re.search(r"\b(\d{2}[/\-.](?:0[1-9]|1[0-2])[/\-.](?:19\d\d|20[0-2]\d))\b", raw_text)
                 if any_date:
                     std_dob = standardize_document_date(any_date.group(1))
@@ -1105,7 +1353,7 @@ async def extract_and_verify_pdf(
                         extracted["dob"] = std_dob
                         extracted["dob_type"] = "full"
 
-            # 1D. Gender
+            # Gender
             g_match = re.search(r"\b(Male|Female|Transgender|पुरुष|महिला|स्त्री)\b", raw_text, re.IGNORECASE)
             if g_match:
                 extracted["gender"] = normalize_gender(g_match.group(1))
@@ -1132,10 +1380,9 @@ async def extract_and_verify_pdf(
                 if num_match:
                     extracted["document_number"] = num_match.group(1).strip()
 
-        # Income extraction (e.g. for Income Certificate)
-        inc_match = re.search(r"(?:Rs\.?|₹|INR|आय|वार्षिक उत्पन्न|Annual Income)\s*[:\-\u2013]?\s*([\d,]+)", raw_text, re.IGNORECASE)
-        if inc_match:
-            extracted["income"] = inc_match.group(1).replace(",", "").strip()
+            inc_match = re.search(r"(?:Rs\.?|₹|INR|आय|वार्षिक उत्पन्न|Annual Income)\s*[:\-\u2013]?\s*([\d,]+)", raw_text, re.IGNORECASE)
+            if inc_match:
+                extracted["income"] = inc_match.group(1).replace(",", "").strip()
 
         # Address / State extraction
         for st_name in CANONICAL_STATES.values():
@@ -1165,8 +1412,8 @@ async def extract_and_verify_pdf(
                 "detail": f"Document extracted name '{extracted['name']}' (no profile name to compare)."
             }
         else:
-            p_clean = re.sub(r"[^\w\s]", "", profile_name.lower()).strip()
-            e_clean = re.sub(r"[^\w\s]", "", extracted["name"].lower()).strip()
+            p_clean = re.sub(r"[^\w\s\u0900-\u097F]", "", profile_name.lower()).strip()
+            e_clean = re.sub(r"[^\w\s\u0900-\u097F]", "", extracted["name"].lower()).strip()
             tokens_p = set(p_clean.split())
             tokens_e = set(e_clean.split())
 
@@ -1179,7 +1426,6 @@ async def extract_and_verify_pdf(
                     "detail": f"Name verified: '{extracted['name']}' matches profile name '{profile_name}'."
                 }
             else:
-                # Measure token overlap proportion to avoid single-token false positives
                 overlap = len(tokens_p & tokens_e) / max(len(tokens_p), len(tokens_e), 1)
                 if overlap >= 0.65:
                     name_comp = {
@@ -1201,24 +1447,23 @@ async def extract_and_verify_pdf(
         # 2B. DOB Comparison
         if not extracted["dob"]:
             dob_comp = {
-                "status": "unreadable",
+                "status": "unreadable" if is_aadhaar else "not_applicable",
                 "document_value": None,
                 "profile_value": profile_dob,
-                "detail": "Date of birth could not be read from document."
+                "detail": "Date of birth could not be read from document." if is_aadhaar else "Date of birth not evaluated for this certificate type."
             }
         elif not profile_dob:
             dob_comp = {
                 "status": "match",
                 "document_value": extracted["dob"],
                 "profile_value": None,
-                "detail": f"Document date of birth extracted as {extracted['dob']}."
+                "detail": f"Document date extracted as {extracted['dob']}."
             }
         else:
             clean_p = profile_dob.replace("/", "-")
             clean_e = extracted["dob"].replace("/", "-")
 
             if extracted.get("dob_type") == "year_only":
-                # Compare year only
                 p_year = clean_p.split("-")[0] if len(clean_p.split("-")[0]) == 4 else clean_p.split("-")[-1]
                 e_year = extracted.get("birth_year") or clean_e.split("-")[0]
                 if p_year == e_year:
@@ -1235,8 +1480,7 @@ async def extract_and_verify_pdf(
                         "profile_value": profile_dob,
                         "detail": f"Birth year mismatch: Document states birth year {e_year} vs profile DOB '{profile_dob}'."
                     }
-            else:
-                # Compare complete date
+            elif is_aadhaar:
                 if clean_p == clean_e:
                     dob_comp = {
                         "status": "match",
@@ -1251,10 +1495,57 @@ async def extract_and_verify_pdf(
                         "profile_value": profile_dob,
                         "detail": f"DOB discrepancy: Document states '{extracted['dob']}' vs saved profile '{profile_dob}'."
                     }
+            else:
+                # For certificates, dob slot holds certificate issue date
+                dob_comp = {
+                    "status": "match",
+                    "document_value": extracted["dob"],
+                    "profile_value": profile_dob,
+                    "detail": f"Certificate issue date extracted: {extracted['dob']}."
+                }
         field_comparisons["date_of_birth"] = dob_comp
-        details.append(dob_comp["detail"])
+        if is_aadhaar:
+            details.append(dob_comp["detail"])
 
-        # 2C. Gender Comparison (if present)
+        # 2C. Income Comparison (for Income Certificate)
+        if is_income:
+            if extracted.get("income") is not None:
+                field_comparisons["income"] = {
+                    "status": "match",
+                    "document_value": f"₹{int(extracted['income']):,}",
+                    "profile_value": None,
+                    "detail": f"Annual income certified as ₹{int(extracted['income']):,} ({extracted.get('financial_year') or 'Current Year'})."
+                }
+                details.append(field_comparisons["income"]["detail"])
+            else:
+                field_comparisons["income"] = {
+                    "status": "unreadable",
+                    "document_value": None,
+                    "profile_value": None,
+                    "detail": "Income amount could not be read from certificate."
+                }
+                details.append(field_comparisons["income"]["detail"])
+
+        # 2D. Category Comparison (for Caste Certificate)
+        if is_caste:
+            if extracted.get("category"):
+                field_comparisons["category"] = {
+                    "status": "match",
+                    "document_value": extracted["category"],
+                    "profile_value": None,
+                    "detail": f"Caste/Category certified as {extracted['category']}{' (' + extracted['caste'] + ')' if extracted.get('caste') else ''}."
+                }
+                details.append(field_comparisons["category"]["detail"])
+            else:
+                field_comparisons["category"] = {
+                    "status": "unreadable",
+                    "document_value": None,
+                    "profile_value": None,
+                    "detail": "Category could not be read from caste certificate."
+                }
+                details.append(field_comparisons["category"]["detail"])
+
+        # 2E. Gender Comparison (if present in Aadhaar)
         if extracted.get("gender") and profile_gender:
             if extracted["gender"].lower() == profile_gender.lower():
                 gender_comp = {
@@ -1272,20 +1563,10 @@ async def extract_and_verify_pdf(
                 }
             field_comparisons["gender"] = gender_comp
             details.append(gender_comp["detail"])
-        elif extracted.get("gender"):
-            field_comparisons["gender"] = {
-                "status": "unavailable",
-                "document_value": extracted["gender"],
-                "profile_value": None,
-                "detail": f"Document states gender: {extracted['gender']}."
-            }
 
         # ==========================================
         # 3. Overall Document Verification Status Rules
         # ==========================================
-        # Strict rules:
-        # A document must NOT be marked verified merely because some text was extracted.
-        # Both Name AND Date of Birth consistency must be verified.
         name_status = field_comparisons["name"]["status"]
         dob_status = field_comparisons["date_of_birth"]["status"]
 
@@ -1302,11 +1583,33 @@ async def extract_and_verify_pdf(
                 status = "needs_review"
             else:
                 status = "failed"
+        elif is_income:
+            if name_status == "match" and extracted.get("income") is not None and extracted.get("document_number"):
+                status = "verified"
+            elif name_status == "mismatch":
+                status = "needs_review"
+            elif extracted.get("income") is not None:
+                status = "extracted"
+            elif raw_text:
+                status = "needs_review"
+            else:
+                status = "failed"
+        elif is_caste:
+            if name_status == "match" and extracted.get("category") and extracted.get("document_number"):
+                status = "verified"
+            elif name_status == "mismatch":
+                status = "needs_review"
+            elif extracted.get("category"):
+                status = "extracted"
+            elif raw_text:
+                status = "needs_review"
+            else:
+                status = "failed"
         else:
             # Generic document
             if name_status == "match" and (dob_status == "match" or extracted.get("document_number")):
                 status = "verified"
-            elif name_status == "mismatch" or dob_status == "mismatch":
+            elif name_status == "mismatch":
                 status = "needs_review"
             elif raw_text:
                 status = "extracted"

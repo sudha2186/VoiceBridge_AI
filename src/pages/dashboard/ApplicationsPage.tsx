@@ -393,7 +393,18 @@ export default function ApplicationsPage() {
                   <div>
                     <span className="text-primary-400">Annual Income</span>
                     <p className="font-semibold text-primary-800 dark:text-cream-100">
-                      {profile.annual_income != null ? `₹${profile.annual_income.toLocaleString('en-IN')}` : '—'}
+                      {profile.has_personal_income === false ? (
+                        <>
+                          <span className="block text-primary-600 dark:text-cream-300">₹0 (Personal)</span>
+                          <span className="text-[11px] text-accent-600 dark:text-accent-400">
+                            Parent/Guardian: ₹{profile.guardian_income ? Number(profile.guardian_income).toLocaleString('en-IN') : '0'}
+                          </span>
+                        </>
+                      ) : profile.annual_income != null ? (
+                        `₹${profile.annual_income.toLocaleString('en-IN')}`
+                      ) : (
+                        '—'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -487,35 +498,112 @@ export default function ApplicationsPage() {
               </div>
             </div>
 
-            {/* Step 3: Verified Citizen Documents Checklist */}
+            {/* Step 3: Required & Attached Documents Checklist */}
             <div>
-              <h3 className="text-sm font-bold uppercase tracking-wide text-primary-700 dark:text-primary-300 flex items-center gap-1.5 mb-2">
-                <ShieldCheck size={16} className="text-accent-600" />
-                3. Attached & Verified Citizen Documents
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {documents.map((doc) => {
-                  const isVer = doc.verification?.status === 'verified';
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
-                        isVer
-                          ? 'border-emerald-200 bg-emerald-50/50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300'
-                          : 'border-cream-200 bg-cream-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/30 dark:text-cream-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <FileText size={14} />
-                        <span className="font-semibold truncate">{doc.document_type}</span>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase">
-                        {isVer ? 'Verified' : 'Attached'}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-primary-700 dark:text-primary-300 flex items-center gap-1.5">
+                  <ShieldCheck size={16} className="text-accent-600" />
+                  3. Scheme Document Checklist & Verification Status
+                </h3>
+                <Link
+                  to="/dashboard/documents"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-accent-600 hover:underline dark:text-accent-400"
+                >
+                  <FilePlus2 size={12} /> Manage Documents
+                </Link>
               </div>
+
+              {/* Scheme requirements matching */}
+              {activeScheme.document_requirements && activeScheme.document_requirements.length > 0 ? (
+                <div className="space-y-2">
+                  {activeScheme.document_requirements.map((req, reqIdx) => {
+                    const isAttached = documents.some(
+                      (d) =>
+                        d.document_type.toLowerCase().includes(req.name.toLowerCase()) ||
+                        req.name.toLowerCase().includes(d.document_type.toLowerCase()) ||
+                        (req.name.toLowerCase().includes('income') && d.document_type.toLowerCase().includes('income')) ||
+                        (req.name.toLowerCase().includes('aadhaar') && d.document_type.toLowerCase().includes('aadhaar')) ||
+                        (req.name.toLowerCase().includes('caste') && d.document_type.toLowerCase().includes('caste')) ||
+                        (req.name.toLowerCase().includes('bank') && (d.document_type.toLowerCase().includes('bank') || d.document_type.toLowerCase().includes('passbook')))
+                    );
+                    const matchingDoc = documents.find(
+                      (d) =>
+                        d.document_type.toLowerCase().includes(req.name.toLowerCase()) ||
+                        req.name.toLowerCase().includes(d.document_type.toLowerCase()) ||
+                        (req.name.toLowerCase().includes('income') && d.document_type.toLowerCase().includes('income')) ||
+                        (req.name.toLowerCase().includes('aadhaar') && d.document_type.toLowerCase().includes('aadhaar'))
+                    );
+                    const isVerified = matchingDoc?.verification?.status === 'verified';
+
+                    return (
+                      <div
+                        key={`${req.name}-${reqIdx}`}
+                        className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-xs ${
+                          isVerified
+                            ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300'
+                            : isAttached
+                            ? 'border-blue-200 bg-blue-50/40 text-blue-900 dark:border-blue-800 dark:bg-blue-950/20 dark:text-blue-300'
+                            : req.status === 'required'
+                            ? 'border-amber-200 bg-amber-50/40 text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText size={14} className="shrink-0" />
+                          <div>
+                            <span className="font-semibold">{req.name}</span>
+                            {profile?.has_personal_income === false && req.name.toLowerCase().includes('income') && (
+                              <span className="block text-[11px] text-accent-600 dark:text-accent-400 font-normal">
+                                (Parent / Guardian Income Certificate applicable)
+                              </span>
+                            )}
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{req.reason}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                              req.status === 'required'
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                                : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            {req.status}
+                          </span>
+                          <span className="text-[10px] font-bold">
+                            {isVerified ? '✓ Verified' : isAttached ? '✓ Attached' : 'Not Uploaded'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {documents.map((doc) => {
+                    const isVer = doc.verification?.status === 'verified';
+                    return (
+                      <div
+                        key={doc.id}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                          isVer
+                            ? 'border-emerald-200 bg-emerald-50/50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300'
+                            : 'border-cream-200 bg-cream-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/30 dark:text-cream-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText size={14} />
+                          <span className="font-semibold truncate">{doc.document_type}</span>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase">
+                          {isVer ? 'Verified' : 'Attached'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Step 4: Official Submission Notice & Instructions */}

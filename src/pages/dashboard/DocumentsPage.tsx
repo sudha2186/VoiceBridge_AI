@@ -98,35 +98,10 @@ export default function DocumentsPage() {
   const bankDoc = documents.find((d) => d.document_type === 'Bank Passbook');
   const casteDoc = documents.find((d) => d.document_type === 'Caste Certificate');
 
-  // Helper: determine if a document type is gated/locked
-  const getDocumentLockStatus = (type: string): { locked: boolean; reason?: string } => {
-    if (type === 'Aadhaar Card' || type === 'Photo' || type === 'PAN Card') {
-      return { locked: false };
-    }
-    if (type === 'Income Certificate') {
-      if (!isAadhaarVerified) {
-        return {
-          locked: true,
-          reason: 'Aadhaar Card must be uploaded and pass profile verification before Income Certificate can be uploaded.',
-        };
-      }
-      return { locked: false };
-    }
-    if (type === 'Bank Passbook' || type === 'Caste Certificate') {
-      if (!isAadhaarVerified) {
-        return {
-          locked: true,
-          reason: 'Aadhaar Card must be uploaded and verified first.',
-        };
-      }
-      if (!isIncomeVerified) {
-        return {
-          locked: true,
-          reason: 'Income Certificate must be uploaded and verified before proceeding to Bank / Caste documents.',
-        };
-      }
-      return { locked: false };
-    }
+  // Document access: Aadhaar is recommended as primary identity proof.
+  // Income Certificate, Caste Certificate, Bank Passbook, and PAN are optional for general profile completion,
+  // and unlocked for upload at any time or when required by a specific scheme.
+  const getDocumentLockStatus = (_type: string): { locked: boolean; reason?: string } => {
     return { locked: false };
   };
 
@@ -263,14 +238,14 @@ export default function DocumentsPage() {
         </p>
       </div>
 
-      {/* Sequential Gated Upload Pipeline */}
+      {/* Citizen Document Verification Overview */}
       <div className="rounded-2xl border border-cream-200 bg-white p-5 shadow-sm dark:border-primary-700 dark:bg-primary-800">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-bold uppercase tracking-wide text-primary-500 dark:text-primary-400">
-            Sequential Document Verification Pipeline
+            Citizen Document Verification Overview
           </h2>
           <span className="text-xs text-primary-400 dark:text-primary-500">
-            Per-document verification gating
+            Scheme-based on-demand verification
           </span>
         </div>
 
@@ -284,7 +259,7 @@ export default function DocumentsPage() {
               : 'border-primary-300 bg-cream-50/60 dark:border-primary-600 dark:bg-primary-900/30'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Step 1 · Identity</span>
+              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Identity · Primary</span>
               {isAadhaarVerified ? (
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 size={13} /> Verified
@@ -295,7 +270,7 @@ export default function DocumentsPage() {
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 dark:text-primary-300">
-                  Required First
+                  Recommended First
                 </span>
               )}
             </div>
@@ -305,7 +280,7 @@ export default function DocumentsPage() {
                 ? 'Name & DOB matched with profile.'
                 : aadhaarNeedsReview
                 ? 'Discrepancy detected. Re-upload or edit profile.'
-                : 'Upload first to unlock next documents.'}
+                : 'Primary identity document for scheme eligibility.'}
             </p>
           </div>
 
@@ -313,33 +288,31 @@ export default function DocumentsPage() {
           <div className={`rounded-xl border p-3.5 transition-all ${
             isIncomeVerified
               ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20'
-              : !isAadhaarVerified
-              ? 'border-dashed border-primary-200 bg-cream-100/40 opacity-70 dark:border-primary-700 dark:bg-primary-900/10'
-              : 'border-accent-300 bg-accent-50/40 dark:border-accent-800 dark:bg-accent-950/20'
+              : incomeDoc
+              ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20'
+              : 'border-accent-200 bg-cream-50/60 dark:border-accent-800 dark:bg-primary-900/20'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Step 2 · Income</span>
+              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Income · Scheme-Specific</span>
               {isIncomeVerified ? (
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 size={13} /> Verified
                 </span>
-              ) : !isAadhaarVerified ? (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-400 dark:text-primary-500">
-                  <Lock size={12} /> Locked
+              ) : incomeDoc ? (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <AlertTriangle size={13} /> Extracted / Review
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-accent-600 dark:text-accent-400">
-                  <Unlock size={12} /> Ready to Upload
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent-600 dark:text-accent-400">
+                  <Unlock size={12} /> Optional / On Demand
                 </span>
               )}
             </div>
             <p className="mt-1 text-sm font-bold text-primary-800 dark:text-cream-100">Income Certificate</p>
             <p className="mt-0.5 text-xs text-primary-500 dark:text-primary-400">
               {isIncomeVerified
-                ? 'Income verified against profile.'
-                : !isAadhaarVerified
-                ? 'Locked until Aadhaar is verified.'
-                : 'Unlocked! Upload to verify income.'}
+                ? 'Certified income verified against profile.'
+                : 'Optional for profile. Required only when selected scheme requires income proof.'}
             </p>
           </div>
 
@@ -347,31 +320,27 @@ export default function DocumentsPage() {
           <div className={`rounded-xl border p-3.5 transition-all ${
             bankDoc?.verification?.status === 'verified' || casteDoc?.verification?.status === 'verified'
               ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20'
-              : !isIncomeVerified
-              ? 'border-dashed border-primary-200 bg-cream-100/40 opacity-70 dark:border-primary-700 dark:bg-primary-900/10'
-              : 'border-accent-300 bg-accent-50/40 dark:border-accent-800 dark:bg-accent-950/20'
+              : 'border-accent-200 bg-cream-50/60 dark:border-accent-800 dark:bg-primary-900/20'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Step 3 · Bank / Caste</span>
-              {bankDoc?.verification?.status === 'verified' || casteDoc?.verification?.status === 'verified' ? (
+              <span className="text-xs font-semibold uppercase text-primary-500 dark:text-primary-400">Category & DBT</span>
+              {casteDoc?.verification?.status === 'verified' ? (
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 size={13} /> Verified
+                  <CheckCircle2 size={13} /> Caste Verified
                 </span>
-              ) : !isIncomeVerified ? (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-400 dark:text-primary-500">
-                  <Lock size={12} /> Locked
+              ) : bankDoc?.verification?.status === 'verified' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 size={13} /> Bank Verified
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-accent-600 dark:text-accent-400">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent-600 dark:text-accent-400">
                   <Unlock size={12} /> Ready to Upload
                 </span>
               )}
             </div>
-            <p className="mt-1 text-sm font-bold text-primary-800 dark:text-cream-100">Bank / Caste Certificate</p>
+            <p className="mt-1 text-sm font-bold text-primary-800 dark:text-cream-100">Bank & Category Proof</p>
             <p className="mt-0.5 text-xs text-primary-500 dark:text-primary-400">
-              {!isIncomeVerified
-                ? 'Locked until Income Certificate is verified.'
-                : 'Unlocked! Upload supporting certificates.'}
+              Passbook for DBT transfers; Caste certificate for affirmative welfare criteria.
             </p>
           </div>
         </div>

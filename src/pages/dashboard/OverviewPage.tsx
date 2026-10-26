@@ -496,7 +496,71 @@ export default function OverviewPage() {
                               </div>
                             )}
 
-                            {result.scheme.required_documents && result.scheme.required_documents.length > 0 && (
+                            {/* Scheme Document Requirements Breakdown */}
+                            {result.scheme.document_requirements && result.scheme.document_requirements.length > 0 ? (
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-400 dark:text-primary-400">
+                                    Document Checklist & Stage Requirements
+                                  </p>
+                                  <span className="text-[11px] text-primary-400 dark:text-primary-500">
+                                    Official Rule Justification
+                                  </span>
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                  {result.scheme.document_requirements.map((docReq, reqIdx) => {
+                                    const statusBadge =
+                                      docReq.status === 'required'
+                                        ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300'
+                                        : docReq.status === 'conditional'
+                                        ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300'
+                                        : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300';
+
+                                    const stageBadge =
+                                      docReq.stage === 'now'
+                                        ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
+
+                                    return (
+                                      <div
+                                        key={`${docReq.name}-${reqIdx}`}
+                                        className="rounded-lg border border-cream-200 bg-cream-50/50 p-2.5 dark:border-primary-700/60 dark:bg-primary-900/30"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <FileText size={13} className="text-primary-500 shrink-0" />
+                                            <span className="text-xs font-bold text-primary-800 dark:text-cream-100">
+                                              {docReq.name}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span
+                                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${statusBadge}`}
+                                            >
+                                              {docReq.status}
+                                            </span>
+                                            <span
+                                              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${stageBadge}`}
+                                            >
+                                              Stage: {docReq.stage === 'now' ? 'Application (Now)' : 'Disbursement / Later'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <p className="mt-1 text-[11px] leading-relaxed text-primary-600 dark:text-cream-300">
+                                          <span className="font-medium text-primary-700 dark:text-cream-200">Justification:</span>{' '}
+                                          {docReq.reason}
+                                          {docReq.condition && (
+                                            <span className="italic text-amber-700 dark:text-amber-400">
+                                              {' '}(Condition: {docReq.condition})
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : result.scheme.required_documents && result.scheme.required_documents.length > 0 ? (
                               <div>
                                 <p className="text-xs font-semibold uppercase tracking-wide text-primary-400 dark:text-primary-400">
                                   Required Documents
@@ -512,7 +576,7 @@ export default function OverviewPage() {
                                   ))}
                                 </div>
                               </div>
-                            )}
+                            ) : null}
 
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-cream-100 dark:border-primary-700/50">
                               {(result.scheme.official_url || result.scheme.official_link) && (

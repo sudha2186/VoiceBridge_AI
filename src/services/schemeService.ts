@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getSchemeDocumentRequirements, SchemeDocumentRequirement } from './documentCatalog';
 
 export interface EligibilityRuleRecord {
   id: string;
@@ -39,6 +40,7 @@ export interface Scheme {
   official_link: string | null;
   eligibility_criteria: SchemeEligibility | null;
   required_documents: string[] | null;
+  document_requirements?: SchemeDocumentRequirement[];
   how_to_apply?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -58,7 +60,11 @@ interface RawSchemeRow {
   updated_at: string | null;
 }
 
-function buildEligibilityCriteria(rules: EligibilityRuleRecord[], stateApplicable: string | null): SchemeEligibility {
+function buildEligibilityCriteria(
+  rules: EligibilityRuleRecord[],
+  stateApplicable: string | null,
+  schemeName?: string
+): SchemeEligibility {
   const criteria: SchemeEligibility = {
     rawRules: rules,
   };
@@ -117,6 +123,35 @@ function buildEligibilityCriteria(rules: EligibilityRuleRecord[], stateApplicabl
     }
   }
 
+  // Domain guardrails & official verified criteria alignment
+  if (schemeName) {
+    const sName = schemeName.toLowerCase();
+    if (sName.includes('senior citizen')) {
+      // Senior citizen schemes strictly require age >= 60 by official guidelines (IGNOAPS)
+      criteria.age_min = Math.max(criteria.age_min ?? 60, 60);
+    }
+    if (sName.includes('girl child')) {
+      criteria.gender = 'Female';
+      criteria.age_max = criteria.age_max ?? 18;
+      if (!criteria.occupations) criteria.occupations = ['Student'];
+    }
+    if (sName.includes('youth skill')) {
+      criteria.age_min = criteria.age_min ?? 18;
+      criteria.age_max = criteria.age_max ?? 35;
+    }
+    if (sName.includes('maternal health')) {
+      criteria.gender = 'Female';
+      criteria.age_min = criteria.age_min ?? 18;
+      criteria.age_max = criteria.age_max ?? 49;
+    }
+    if (sName.includes('disability assistance')) {
+      criteria.disability_status = criteria.disability_status || 'Person with Disability';
+    }
+    if (sName.includes('scholarship') || sName.includes('student education')) {
+      if (!criteria.occupations) criteria.occupations = ['Student'];
+    }
+  }
+
   return criteria;
 }
 
@@ -124,7 +159,8 @@ function mapSchemeRow(row: RawSchemeRow, rules: EligibilityRuleRecord[] = []): S
   const title = row.name;
   const category = row.scheme_type || 'General Welfare';
   const official_link = row.official_url;
-  const eligibility_criteria = buildEligibilityCriteria(rules, row.state_applicable);
+  const eligibility_criteria = buildEligibilityCriteria(rules, row.state_applicable, row.name);
+  const docReqs = getSchemeDocumentRequirements(row.name);
 
   return {
     id: row.id,
@@ -140,7 +176,8 @@ function mapSchemeRow(row: RawSchemeRow, rules: EligibilityRuleRecord[] = []): S
     official_url: row.official_url,
     official_link,
     eligibility_criteria,
-    required_documents: ['Aadhaar Card', 'Income Certificate', 'Bank Account Passbook'],
+    required_documents: docReqs.filter((d) => d.status === 'required').map((d) => d.name),
+    document_requirements: docReqs,
     how_to_apply: row.application_mode ? `Application mode: ${row.application_mode}. Visit official portal.` : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
