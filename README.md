@@ -14,7 +14,7 @@ An AI-powered platform designed to help citizens discover and understand governm
 </p>
 
 <!-- Add a screenshot of the actual application here. -->
-<img src="docs/images/voicebridge-dashboard.png" alt="VoiceBridge AI Dashboard" width="90%"/>
+<img src="docs/images/voicebridge_AI.jpeg" alt="VoiceBridge AI Dashboard" width="90%"/>
 
 </div>
 
